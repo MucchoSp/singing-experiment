@@ -8,18 +8,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;mar
 </style></head>
 <body>
 <h1>歌唱実験・伴奏同期テスト</h1>
-<p>試作版です。マイクで歌声を録音し、選んだテンポの伴奏を再生します。録音データはまだサーバーに送信されません。</p>
+<p>試作版です。マイクで歌声を録音し、選んだテンポの伴奏を再生します。録音データはサーバーに送信されません。録音後は共有メニューから手動で共有できます。</p>
 <div class="panel">
 <label for="tempo">テンポ条件</label><select id="tempo"><option value="slow">遅いテンポ</option><option value="medium" selected>中間テンポ</option><option value="fast">速いテンポ</option></select>
 <label for="loudness">声量条件</label><select id="loudness"><option value="soft">小さめ</option><option value="medium" selected>普通</option><option value="strong">大きめ</option></select>
 <p class="note">声量条件は歌い手への指示として扱います。条件ごとの指示文は本番前に整えてください。</p>
 <p id="status">状態：条件を選び、「録音＋伴奏開始」を押してください。</p><button id="start">録音＋伴奏開始</button><button id="stop" disabled>停止</button>
 </div>
-<div class="panel"><strong>録音結果</strong><p id="details">まだ録音されていません。</p><audio id="playback" controls hidden></audio><button id="download" disabled>テスト音声を保存</button></div>
+<div class="panel"><strong>録音結果</strong><p id="details">まだ録音されていません。</p><audio id="playback" controls hidden></audio><button id="download" disabled>テスト音声を保存</button><button id="share" disabled>共有メニューを開く</button><p id="shareNote" class="note">録音後、iPhone の共有メニューから共有先を選べます。共有先アプリが対応している場合に利用できます。</p></div>
 <p class="note">事前準備：このHTMLと同じ場所に「audio」フォルダーを作り、その中に slow.mp3、medium.mp3、fast.mp3 を置いてください。伴奏はイヤホンで聴き、スピーカーから音が漏れないようにしてください。この試作はタイミング精度を保証しません。本番参加者の録音には、遅延検証と自動保存の実装後に使用してください。</p>
 <script>
 (() => {
-const $=id=>document.getElementById(id), tempo=$('tempo'), loudness=$('loudness'), start=$('start'), stop=$('stop'), status=$('status'), details=$('details'), playback=$('playback'), download=$('download');
+const $=id=>document.getElementById(id), tempo=$('tempo'), loudness=$('loudness'), start=$('start'), stop=$('stop'), status=$('status'), details=$('details'), playback=$('playback'), download=$('download'), share=$('share'), shareNote=$('shareNote');
 const paths={slow:'audio/slow.mp3',medium:'audio/medium.mp3',fast:'audio/fast.mp3'};
 let stream=null, recorder=null, chunks=[], blob=null, blobUrl=null, ctx=null, source=null, startedPerf=null, scheduledTime=null, condition=null, manualStop=false;
 const say=s=>status.textContent='状態：'+s;
@@ -37,18 +37,19 @@ start.addEventListener('click',async()=>{
   const mt=mime();recorder=new MediaRecorder(stream,mt?{mimeType:mt}:{});
   recorder.addEventListener('dataavailable',e=>{if(e.data&&e.data.size)chunks.push(e.data)});
   recorder.addEventListener('stop',()=>{
-   blob=new Blob(chunks,{type:recorder.mimeType||'application/octet-stream'});if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(blob);playback.src=blobUrl;playback.hidden=false;download.disabled=false;
+   blob=new Blob(chunks,{type:recorder.mimeType||'application/octet-stream'});if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(blob);playback.src=blobUrl;playback.hidden=false;download.disabled=false;share.disabled=false;
    const elapsed=startedPerf===null?'不明':((performance.now()-startedPerf)/1000).toFixed(2);
    details.textContent=`テンポ：${condition.tempo}、声量条件：${condition.loudness}、録音時間：約${elapsed}秒、形式：${blob.type||'不明'}、サイズ：約${(blob.size/1024).toFixed(1)}KB。`;
    console.log('ローカル試験メタデータ（サーバーには送信されません）',{condition,elapsedSeconds:elapsed,mimeType:blob.type,bytes:blob.size,audioContextSampleRate:ctx?.sampleRate,scheduledPlaybackContextTime:scheduledTime,note:'実際の音響遅延の校正値ではありません'});
    stream?.getTracks().forEach(t=>t.stop());stream=null;if(ctx&&ctx.state!=='closed')ctx.close();ctx=null;say('録音完了。下のプレーヤーで確認できます。');
   });
   recorder.start(250);startedPerf=performance.now();source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);scheduledTime=ctx.currentTime+0.2;source.onended=()=>{if(!manualStop)finish('伴奏が終わりました。録音を処理しています…')};source.start(scheduledTime);
-  tempo.disabled=true;loudness.disabled=true;stop.disabled=false;playback.hidden=true;download.disabled=true;details.textContent='録音中です。伴奏に合わせて歌ってください。伴奏終了時に録音も自動停止します。';say('録音中・伴奏再生中…');
+  tempo.disabled=true;loudness.disabled=true;stop.disabled=false;playback.hidden=true;download.disabled=true;share.disabled=true;details.textContent='録音中です。伴奏に合わせて歌ってください。伴奏終了時に録音も自動停止します。';say('録音中・伴奏再生中…');
  }catch(e){console.error(e);say('開始できませんでした。伴奏ファイルの名前・配置とマイク許可を確認してください。');stream?.getTracks().forEach(t=>t.stop());stream=null;if(ctx&&ctx.state!=='closed')await ctx.close();ctx=null;start.disabled=false;tempo.disabled=false;loudness.disabled=false;}
 });
 stop.addEventListener('click',()=>{manualStop=true;finish('手動で停止しました。録音を処理しています…')});
 const observer=new MutationObserver(()=>{const active=!stop.disabled;tempo.disabled=active;loudness.disabled=active});observer.observe(stop,{attributes:true,attributeFilter:['disabled']});
 download.addEventListener('click',()=>{if(!blob||!blobUrl)return;const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('webm')?'webm':'audio';const a=document.createElement('a');a.href=blobUrl;a.download=`singing-test-${condition?.tempo||'unknown'}-${condition?.loudness||'unknown'}.${ext}`;a.click()});
+share.addEventListener('click',async()=>{if(!blob)return;const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('webm')?'webm':'audio';const file=new File([blob],`singing-test-${condition?.tempo||'unknown'}-${condition?.loudness||'unknown'}.${ext}`,{type:blob.type||'application/octet-stream'});if(!navigator.share||!navigator.canShare||!navigator.canShare({files:[file]})){shareNote.textContent='このブラウザでは音声ファイルの共有メニューを利用できません。「テスト音声を保存」を使ってください。';return;}try{await navigator.share({files:[file],title:'歌唱実験の録音',text:`テンポ=${condition.tempo}, 声量条件=${condition.loudness}`});shareNote.textContent='共有メニューを開きました。共有先と送信先を確認して操作してください。';}catch(e){if(e.name==='AbortError'){shareNote.textContent='共有をキャンセルしました。録音データはこのページ内に残っています。';}else{console.error(e);shareNote.textContent='共有を開始できませんでした。「テスト音声を保存」をお試しください。';}}});
 })();
 </script></body></html>
