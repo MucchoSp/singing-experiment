@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>歌唱実験・参加者用</title>
+    <style>
+        :root {
+            color-scheme: light
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', sans-serif;
+            max-width: 760px;
+            margin: auto;
+            padding: 16px;
+            color: #172333;
+            line-height: 1.6;
+            background: #f8fafc
+        }
+
+        h1 {
+            font-size: 1.55rem
+        }
+
+        h2 {
+            font-size: 1.15rem;
+            margin: 0 0 12px
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #dce3ec;
+            border-radius: 14px;
+            padding: 16px;
+            margin: 14px 0
+        }
+
+        label {
+            display: block;
+            margin: 12px 0 4px;
+            font-weight: 600
+        }
+
+        input,
+        select,
+        button {
+            font: inherit
+        }
+
+        input,
+        select {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #aeb9c8;
+            border-radius: 8px;
+            background: white
+        }
+
+        button {
+            border: 0;
+            border-radius: 9px;
+            padding: 11px 15px;
+            background: #175cd3;
+            color: white;
+            margin: 5px 5px 5px 0;
+            cursor: pointer
+        }
+
+        button.secondary {
+            background: #e7eef9;
+            color: #173d77
+        }
+
+        button.danger {
+            background: #b42318
+        }
+
+        button:disabled {
+            opacity: .45;
+            cursor: default
+        }
+
+        .muted {
+            color: #536276;
+            font-size: .92rem
+        }
+
+        .status {
+            background: #eef4fc;
+            border-radius: 8px;
+            padding: 10px;
+            white-space: pre-wrap
+        }
+
+        .good {
+            color: #087443
+        }
+
+        .warn {
+            color: #9a5500
+        }
+
+        .conditions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 7px
+        }
+
+        .condition {
+            border: 1px solid #c7d3e2;
+            border-radius: 8px;
+            padding: 9px;
+            font-size: .88rem
+        }
+
+        .condition.done {
+            background: #e9f8ed;
+            border-color: #71bb89
+        }
+
+        .condition.current {
+            outline: 2px solid #175cd3
+        }
+
+        audio {
+            width: 100%;
+            margin: 9px 0
+        }
+
+        pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: .82rem
+        }
+
+        small {
+            font-size: .84rem
+        }
+
+        .hide {
+            display: none
+        }
+
+        .inline {
+            display: flex;
+            align-items: center;
+            gap: 9px
+        }
+
+        .inline input {
+            width: auto
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid #e0e5ec;
+            margin: 16px 0
+        }
+    </style>
+</head>
+
+<body>
+    <h1>歌唱実験・参加者用ページ</h1>
+    <p class="muted">録音と記録はこの端末内で処理され、サーバーへ自動送信されません。各試行の音声・JSONを必ず共有してください。約10 msの絶対同期精度は保証されません。</p>
+    <section class="card">
+        <h2>1. 参加者と機器の設定</h2>
+        <label for="pid">匿名参加者ID</label><input id="pid" maxlength="30" placeholder="例 P01" value="P01">
+        <label for="device">iPhone・接続機器のメモ</label><input id="device" placeholder="例 iPhone 15 / USB-C変換アダプター">
+        <label for="earphone">イヤホンの種類</label><select id="earphone">
+            <option value="with-mic">マイク付き有線イヤホン</option>
+            <option value="without-mic">マイクなし有線イヤホン</option>
+            <option value="unknown" selected>分からない</option>
+        </select>
+        <label for="connection">接続方式</label><select id="connection">
+            <option value="usb-c">USB-C有線</option>
+            <option value="lightning">Lightning有線</option>
+            <option value="3.5mm">3.5 mm有線</option>
+            <option value="other">その他・不明</option>
+        </select>
+        <label for="calibration">校正セッションID（任意）</label><input id="calibration" placeholder="校正JSONの sessionId を貼り付け">
+        <p class="muted">スピーカー校正の値は有線イヤホンの録音に自動適用しません。使用中の入力マイクはSafariから確実に判別できない場合があります。</p>
+    </section>
+    <section class="card">
+        <h2>2. マイクテスト</h2>
+        <p>有線イヤホンを接続し、声を出して録音を確認してください。イヤホンから伴奏が聞こえることも本番開始前に確認します。</p>
+        <button id="testStart">3秒間のマイクテスト</button><audio id="testAudio" controls class="hide"></audio>
+        <p id="testStatus" class="status">未実施</p>
+        <label class="inline"><input type="checkbox" id="checkHeadphone">伴奏がイヤホンから聞こえることを確認した</label>
+        <label class="inline"><input type="checkbox" id="checkMic">録音された歌声を再生して確認した</label>
+    </section>
+    <section class="card">
+        <h2>3. 9条件の歌唱録音</h2>
+        <p class="muted">条件の順番は固定（遅い→中間→速い、各テンポで小→中→大）です。実験計画上、順序効果を避けたい場合は別途ランダム化が必要です。</p>
+        <div id="conditions" class="conditions"></div>
+        <label for="tempo">テンポ</label><select id="tempo">
+            <option value="slow">遅い</option>
+            <option value="medium">中間</option>
+            <option value="fast">速い</option>
+        </select>
+        <label for="loudness">声量（指示条件）</label><select id="loudness">
+            <option value="soft">小</option>
+            <option value="medium">中</option>
+            <option value="strong">大</option>
+        </select>
+        <p id="trialInfo" class="muted"></p><button id="start">録音＋伴奏開始</button><button id="stop" class="danger"
+            disabled>停止</button>
+        <p id="status" class="status">準備完了前：機器設定とマイクテストを確認してください。</p>
+        <audio id="recording" controls class="hide"></audio>
+        <div id="actions" class="hide">
+            <p><strong>録音完了：共有が終わるまで次の録音を開始しないでください。</strong></p><button id="shareBoth">音声＋JSONを共有</button><button
+                id="shareAudio" class="secondary">音声を共有</button><button id="shareJson"
+                class="secondary">JSONを共有</button><button id="saveAudio" class="secondary">音声を保存</button><button
+                id="saveJson" class="secondary">JSONを保存</button>
+            <p class="muted">共有先が2ファイル同時に受け取れない場合は、音声とJSONを別々に共有してください。</p><label class="inline"><input type="checkbox"
+                    id="shared">音声とJSONの送信・保存を確認した</label><button id="next" disabled>確認して次の条件へ</button>
+        </div>
+    </section>
+    <section class="card">
+        <h2>4. 進捗と実験記録</h2>
+        <p id="progress">完了 0 / 9 条件</p><button id="exportManifest" class="secondary">進捗JSONを保存</button><button
+            id="reset" class="secondary">進捗をリセット</button>
+        <p class="muted">進捗はブラウザ内に保存しますが、音声データ自体はページを閉じると失われます。音声とJSONの共有を最優先してください。端末の容量不足・Safariの終了に注意してください。</p>
+    </section>
+    <script>
+        (() => {
+            'use strict';
+            const $ = id => document.getElementById(id); const tempos = ['slow', 'medium', 'fast'], louds = ['soft', 'medium', 'strong']; const tempoNames = { slow: '遅い', medium: '中間', fast: '速い' }, loudNames = { soft: '小', medium: '中', strong: '大' }; const conditions = tempos.flatMap(t => louds.map(l => ({ tempo: t, loudness: l }))); const paths = { slow: 'audio/slow.mp3', medium: 'audio/medium.mp3', fast: 'audio/fast.mp3' }; const KEY = 'singing-experiment-v1';
+            let state = { sessionId: crypto.randomUUID(), completed: [], trialLog: [] }; try { const x = JSON.parse(localStorage.getItem(KEY)); if (x && Array.isArray(x.completed) && Array.isArray(x.trialLog) && typeof x.sessionId === 'string') state = x } catch { }
+            let ctx = null, stream = null, source = null, rec = null, chunks = [], current = null, files = [], objectURL = null, busy = false, testing = false, finished = false;
+            const settingIds = ['pid', 'device', 'earphone', 'connection', 'calibration']; function save() { try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { } } function msg(s) { $('status').textContent = s } function testMsg(s) { $('testStatus').textContent = s } function isDone(t, l) { return state.completed.includes(t + '_' + l) }
+            function render() { const root = $('conditions'); root.textContent = ''; conditions.forEach((c, i) => { const d = document.createElement('div'); d.className = 'condition' + (isDone(c.tempo, c.loudness) ? ' done' : '') + ($('tempo').value === c.tempo && $('loudness').value === c.loudness ? ' current' : ''); d.textContent = (i + 1) + '. ' + tempoNames[c.tempo] + ' × ' + loudNames[c.loudness] + (isDone(c.tempo, c.loudness) ? ' ✓' : ''); root.append(d) }); $('progress').textContent = '完了 ' + state.completed.length + ' / 9 条件'; $('trialInfo').textContent = '選択中：' + tempoNames[$('tempo').value] + ' × ' + loudNames[$('loudness').value] + '（完了済み条件の再録音も可能）'; $('next').disabled = !$('shared').checked }
+            function snapshot() { return { pid: $('pid').value.trim(), device: $('device').value.trim(), earphoneType: $('earphone').value, connection: $('connection').value, calibrationSessionId: $('calibration').value.trim() || null, headphoneCheck: $('checkHeadphone').checked, micCheck: $('checkMic').checked } }
+            function lock(on) { busy = on; $('start').disabled = on; $('stop').disabled = !on; for (const id of [...settingIds, 'tempo', 'loudness', 'testStart']) $(id).disabled = on }
+            async function closeMedia() { try { source?.stop() } catch { } source = null; stream?.getTracks().forEach(t => t.stop()); stream = null; if (ctx && ctx.state !== 'closed') try { await ctx.close() } catch { } ctx = null; lock(false) }
+            function mime() { return ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '' }
+            function makeFile(blob, name, type) { return new File([blob], name, { type }) }
+            function setRecording(blob) { if (objectURL) URL.revokeObjectURL(objectURL); objectURL = URL.createObjectURL(blob); $('recording').src = objectURL; $('recording').classList.remove('hide'); $('actions').classList.remove('hide'); $('shared').checked = false; $('next').disabled = true }
+            function autoNext() { const c = conditions.find(x => !isDone(x.tempo, x.loudness)); if (c) { $('tempo').value = c.tempo; $('loudness').value = c.loudness } render() }
+            async function stopRecording() { if (!rec || rec.state === 'inactive' || finished) return; finished = true; current.recorderStopPerformanceMs = performance.now(); try { rec.stop() } catch (e) { msg('録音停止エラー: ' + e.message); await closeMedia() } $('stop').disabled = true; msg('録音データを処理しています…') }
+            $('testStart').onclick = async () => { if (busy || testing) return; testing = true; $('testStart').disabled = true; testMsg('マイクの使用許可を確認しています…'); let s = null, r = null, parts = []; try { s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); const m = mime(); r = new MediaRecorder(s, m ? { mimeType: m } : undefined); r.ondataavailable = e => { if (e.data.size) parts.push(e.data) }; r.onstop = () => { const b = new Blob(parts, { type: r.mimeType || 'application/octet-stream' }); $('testAudio').src = URL.createObjectURL(b); $('testAudio').classList.remove('hide'); testMsg('テスト録音完了。再生して歌声を確認してください。'); s.getTracks().forEach(t => t.stop()); testing = false; $('testStart').disabled = false }; r.start(); testMsg('3秒間、声を出してください…'); setTimeout(() => { if (r.state !== 'inactive') r.stop() }, 3000) } catch (e) { s?.getTracks().forEach(t => t.stop()); testing = false; $('testStart').disabled = false; testMsg('マイクテストに失敗：' + e.message) } };
+            $('start').onclick = async () => {
+                if (busy || testing) return; if (!$('pid').value.trim()) { msg('匿名参加者IDを入力してください。'); return } if (!$('checkHeadphone').checked || !$('checkMic').checked) { msg('マイクテストとイヤホン確認のチェックを完了してください。'); return } if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.AudioContext) { msg('このブラウザは録音機能に対応していません。'); return } lock(true); finished = false; files = []; $('actions').classList.add('hide'); $('recording').classList.add('hide'); msg('伴奏を準備しています…'); try {
+                    const settings = snapshot(), tempo = $('tempo').value, loudness = $('loudness').value; ctx = new AudioContext(); await ctx.resume(); const response = await fetch(paths[tempo], { cache: 'no-store' }); if (!response.ok) throw Error('伴奏ファイルを取得できません: ' + paths[tempo]); const buffer = await ctx.decodeAudioData(await response.arrayBuffer()); stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); const track = stream.getAudioTracks()[0]; const m = mime(); rec = new MediaRecorder(stream, m ? { mimeType: m } : undefined); chunks = []; current = { schemaVersion: 1, experimentSessionId: state.sessionId, trialId: crypto.randomUUID(), recordedAt: new Date().toISOString(), ...settings, tempo, loudness, trialSequenceNumber: state.trialLog.length + 1, audioContextSampleRate: ctx.sampleRate, audioBufferDurationSeconds: buffer.duration, trackSettings: track.getSettings(), recorderStartPerformanceMs: null, scheduledStartContextSeconds: null, scheduledStartPerformanceEstimateMs: null, playbackScheduleDelaySeconds: 0.5, recorderStopPerformanceMs: null, mediaRecorderMimeType: null, bytes: null, warning: 'AudioContextの再生予約時刻と録音ファイルの時間原点は厳密に同期していません。スピーカー校正値を有線イヤホンの補正値として自動適用していません。10msの絶対同期精度は未検証。' };
+                    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }; rec.onstop = async () => { try { const blob = new Blob(chunks, { type: rec.mimeType || 'application/octet-stream' }); current.mediaRecorderMimeType = blob.type; current.bytes = blob.size; const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('webm') ? 'webm' : 'bin'; const stem = [current.pid, tempo, loudness, current.trialId.slice(0, 8)].map(x => String(x).replace(/[^a-zA-Z0-9_-]/g, '_')).join('_'); files = [makeFile(blob, stem + '.' + ext, blob.type), makeFile(new Blob([JSON.stringify(current, null, 2)], { type: 'application/json' }), stem + '.json', 'application/json')]; setRecording(blob); state.trialLog.push({ trialId: current.trialId, tempo, loudness, recordedAt: current.recordedAt, files: files.map(f => f.name), calibrationSessionId: current.calibrationSessionId }); save(); msg('録音完了。音声とJSONを共有・保存してください。') } catch (e) { msg('録音データ作成エラー: ' + e.message) } finally { await closeMedia() } };
+                    rec.start(); current.recorderStartPerformanceMs = performance.now(); source = ctx.createBufferSource(); source.buffer = buffer; source.connect(ctx.destination); current.scheduledStartContextSeconds = ctx.currentTime + 0.5; current.scheduledStartPerformanceEstimateMs = performance.now() + (current.scheduledStartContextSeconds - ctx.currentTime) * 1000; source.onended = () => { if (!finished) stopRecording() }; source.start(current.scheduledStartContextSeconds); msg('録音中。伴奏に合わせて歌ってください。')
+                }
+                    catch (e) { msg('録音開始エラー: ' + e.message); await closeMedia() }
+            };
+            $('stop').onclick = () => { try { source?.stop() } catch { } stopRecording() };
+            async function share(indices) { const selected = indices.map(i => files[i]).filter(Boolean); if (!selected.length) return; if (!navigator.share || !navigator.canShare?.({ files: selected })) { msg('この端末または共有先ではファイル共有できません。保存ボタンをお使いください。'); return } try { await navigator.share({ files: selected, title: '歌唱実験 音声・記録' }); msg('共有操作が終了しました。送信先で受信を確認してください。') } catch (e) { msg(e.name === 'AbortError' ? '共有をキャンセルしました' : '共有エラー: ' + e.message) } }
+            function saveFile(file) { if (!file) return; const u = URL.createObjectURL(file), a = document.createElement('a'); a.href = u; a.download = file.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000) }
+            $('shareBoth').onclick = () => share([0, 1]); $('shareAudio').onclick = () => share([0]); $('shareJson').onclick = () => share([1]); $('saveAudio').onclick = () => saveFile(files[0]); $('saveJson').onclick = () => saveFile(files[1]); $('shared').onchange = render;
+            $('next').onclick = () => { if (!$('shared').checked || !current) return; const k = current.tempo + '_' + current.loudness; if (!state.completed.includes(k)) state.completed.push(k); save(); $('actions').classList.add('hide'); files = []; current = null; autoNext(); msg(state.completed.length === 9 ? '9条件が完了しました。進捗JSONも保存してください。' : '次の条件を選択しました。録音を開始できます。') };
+            $('exportManifest').onclick = () => { const manifest = { schemaVersion: 1, exportedAt: new Date().toISOString(), experimentSessionId: state.sessionId, participant: snapshot(), completedConditions: state.completed, trialLog: state.trialLog, warning: '進捗JSONには音声データは含まれません。' }; saveFile(makeFile(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }), 'experiment_progress_' + state.sessionId.slice(0, 8) + '.json', 'application/json')) };
+            $('reset').onclick = () => { if (busy) return; if (!confirm('進捗をリセットしますか？保存済みの音声やJSONは削除されません。')) return; state = { sessionId: crypto.randomUUID(), completed: [], trialLog: [] }; save(); autoNext(); msg('進捗をリセットしました。') };
+            $('tempo').onchange = render; $('loudness').onchange = render; autoNext();
+        })();
+    </script>
+</body>
+
+</html>
