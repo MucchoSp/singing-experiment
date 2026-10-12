@@ -1,13 +1,102 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>歌唱実験・クリック校正</title><style>body{font-family:-apple-system,sans-serif;max-width:680px;margin:auto;padding:18px;line-height:1.6}label{display:block;margin:12px 0}input,button,select{font:inherit;padding:9px}button{margin:5px}#status{background:#eef2f7;padding:10px;border-radius:8px}audio{width:100%}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f6f6;padding:12px}small{color:#555}</style></head><body><h2>クリック校正・歌唱録音</h2><p>クリック音はバッファ内の1、2、3、4秒に配置し、録音開始指示後に再生を予約します。録音ファイル内の時刻とAudioContext時刻は直接同一視できません。</p><label>参加者ID <input id="pid" value="P01"></label><label>端末メモ <input id="device" placeholder="iPhone機種、iOS、イヤホン"></label><label>接続 <select id="connection"><option value="speaker">スピーカー（簡易校正）</option><option value="wired">有線イヤホン（歌唱）</option></select></label><label>モード <select id="mode"><option value="click">クリック校正</option><option value="song">歌唱</option></select></label><label>テンポ <select id="tempo"><option value="slow">遅い</option><option value="medium" selected>中間</option><option value="fast">速い</option></select></label><label>声量 <select id="loudness"><option value="soft">小</option><option value="medium" selected>中</option><option value="strong">大</option></select></label><p>試行番号 <strong id="trial">1</strong></p><button id="start">録音＋再生開始</button><button id="stop" disabled>停止</button><p id="status">待機中</p><audio id="player" controls hidden></audio><p><button id="analyze" disabled>クリックを自動検出（試験用）</button><button id="shareAudio" disabled>音声を共有</button><button id="shareMeta" disabled>JSONを共有</button><button id="saveAudio" disabled>音声を保存</button><button id="saveMeta" disabled>JSONを保存</button></p><pre id="results">未測定</pre><small>自動検出は簡易アルゴリズムです。誤検出を波形で確認してください。スピーカー校正値を有線イヤホンの絶対遅延として流用しないでください。</small><script>
-const $=x=>document.getElementById(x),paths={slow:'audio/slow.mp3',medium:'audio/medium.mp3',fast:'audio/fast.mp3'};let ctx,stream,rec,source,chunks=[],blob,meta,files=[],trial=1,stopping=false,objectUrl;
-function state(s){$('status').textContent=s}function busy(b){for(const id of ['start','pid','device','connection','mode','tempo','loudness'])$(id).disabled=b;$('stop').disabled=!b}
-function clickBuffer(context){let sr=context.sampleRate,b=context.createBuffer(1,Math.ceil(sr*5),sr),a=b.getChannelData(0);for(let k=1;k<=4;k++){let base=Math.round(k*sr);for(let j=0;j<Math.round(.012*sr);j++)a[base+j]=Math.sin(2*Math.PI*1800*j/sr)*Math.exp(-j/(sr*.002))*.35}return b}
-async function clean(){try{source?.disconnect()}catch{}source=null;stream?.getTracks().forEach(t=>t.stop());stream=null;if(ctx&&ctx.state!=='closed')await ctx.close();ctx=null;busy(false)}
-function fileSet(){if(!blob||!meta)return;const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('webm')?'webm':'bin',base=`${meta.pid}_${meta.mode}_${meta.trial}_${meta.trialId.slice(0,8)}`;files=[new File([blob],base+'.'+ext,{type:blob.type}),new File([JSON.stringify(meta,null,2)],base+'.json',{type:'application/json'})];}
-function render(){let x=meta?.analysis;$('results').textContent=JSON.stringify({scheduledStartContextSeconds:meta?.scheduledStartContextSeconds,playbackDelaySeconds:meta?.playbackDelaySeconds,clickOffsetsInBufferSeconds:meta?.clickOffsetsInBufferSeconds,analysis:x??'録音後にクリックを自動検出できます'},null,2);}
-$('start').onclick=async()=>{busy(true);stopping=false;for(const id of ['analyze','shareAudio','shareMeta','saveAudio','saveMeta'])$(id).disabled=true;$('player').hidden=true;state('準備中');try{let setting={pid:$('pid').value.trim()||'unknown',device:$('device').value.trim(),connection:$('connection').value,mode:$('mode').value,tempo:$('tempo').value,loudness:$('loudness').value,trial};ctx=new AudioContext();await ctx.resume();let buffer;if(setting.mode==='click')buffer=clickBuffer(ctx);else{let r=await fetch(paths[setting.tempo]);if(!r.ok)throw Error('伴奏が見つかりません');buffer=await ctx.decodeAudioData(await r.arrayBuffer())}stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});let mime=['audio/mp4','audio/webm;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t));rec=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);chunks=[];meta={...setting,trialId:crypto.randomUUID(),createdAt:new Date().toISOString(),trackSettings:stream.getAudioTracks()[0].getSettings(),audioContextSampleRate:ctx.sampleRate,playbackDelaySeconds:.5,clickOffsetsInBufferSeconds:setting.mode==='click'?[1,2,3,4]:null,scheduledStartContextSeconds:null,recorderStartPerformanceMs:null,sourceStartCallPerformanceMs:null,recorderStopPerformanceMs:null,recordingDurationByPerformanceSeconds:null,warning:'AudioContext時刻とMediaRecorderファイル先頭は未校正。スピーカーで測った残差は有線イヤホンの絶対遅延ではない。'};rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};rec.onstop=async()=>{blob=new Blob(chunks,{type:rec.mimeType||'application/octet-stream'});meta.mimeType=blob.type;meta.sizeBytes=blob.size;if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=URL.createObjectURL(blob);$('player').src=objectUrl;$('player').hidden=false;fileSet();for(const id of ['shareAudio','shareMeta','saveAudio','saveMeta'])$(id).disabled=false;$('analyze').disabled=meta.mode!=='click';trial++;$('trial').textContent=trial;render();state('録音完了。必要ならクリックを検出し、音声とJSONを共有してください。');await clean()};rec.start();meta.recorderStartPerformanceMs=performance.now();source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);meta.scheduledStartContextSeconds=ctx.currentTime+meta.playbackDelaySeconds;source.onended=()=>{if(!stopping)finish()};meta.sourceStartCallPerformanceMs=performance.now();source.start(meta.scheduledStartContextSeconds);state('録音・再生中');}catch(e){state('エラー: '+e.message);await clean()}};
-function finish(){if(stopping)return;stopping=true;meta.recorderStopPerformanceMs=performance.now();meta.recordingDurationByPerformanceSeconds=(meta.recorderStopPerformanceMs-meta.recorderStartPerformanceMs)/1000;try{if(rec?.state!=='inactive')rec.stop()}catch(e){state('停止エラー: '+e.message)}$('stop').disabled=true;state('録音を処理中')}$('stop').onclick=()=>{try{source?.stop()}catch{}finish()};
-// Encoded audio is decoded to PCM for offline onset detection. The first sample is not guaranteed to correspond to rec.start().
-$('analyze').onclick=async()=>{if(!blob||meta.mode!=='click')return;state('クリックを解析中');try{const c=new AudioContext(),decoded=await c.decodeAudioData(await blob.arrayBuffer()),sr=decoded.sampleRate,n=decoded.length;let mono=new Float32Array(n);for(let ch=0;ch<decoded.numberOfChannels;ch++){let d=decoded.getChannelData(ch);for(let i=0;i<n;i++)mono[i]+=d[i]/decoded.numberOfChannels}let frame=Math.max(1,Math.round(sr*.002)),rms=[];for(let i=0;i<n;i+=frame){let sum=0,end=Math.min(i+frame,n);for(let j=i;j<end;j++)sum+=mono[j]*mono[j];rms.push(Math.sqrt(sum/(end-i)))}let sorted=[...rms].sort((a,b)=>a-b),median=sorted[Math.floor(sorted.length/2)]||0,peak=Math.max(...rms),threshold=Math.max(.006,median*6,peak*.14),candidates=[];for(let i=1;i<rms.length;i++)if(rms[i]>=threshold&&rms[i-1]<threshold){let t=i*frame/sr;if(!candidates.length||t-candidates[candidates.length-1]>.2)candidates.push(t)}let detected=candidates.slice(0,4),intervals=detected.slice(1).map((t,i)=>+(1000*(t-detected[i]-1)).toFixed(3));meta.analysis={method:'2ms RMS threshold, preliminary; manually verify',decodedSampleRate:sr,detectedClickSeconds:detected,detectedCount:detected.length,intervalErrorsMs:intervals,nominalBufferClickSeconds:[1,2,3,4],observedMinusBufferTimeMs:detected.map((t,i)=>+((t-(i+1))*1000).toFixed(3)),note:'observedMinusBufferTimeMs includes scheduled 500ms delay, clock-origin differences, and audio path effects; not absolute latency',threshold};await c.close();fileSet();render();state(detected.length===4?'解析完了。誤検出がないか確認してください。':'検出数が4ではありません。波形を手動確認してください。')}catch(e){state('解析エラー: '+e.message)}};
-async function share(i){if(!files[i])return;if(!navigator.share||!navigator.canShare?.({files:[files[i]]})){state('共有非対応。保存をお試しください');return}try{await navigator.share({files:[files[i]],title:'歌唱実験'});state('共有操作が終了しました。受信先を確認してください')}catch(e){state(e.name==='AbortError'?'共有をキャンセル':'共有エラー: '+e.message)}}function save(i){if(!files[i])return;let u=URL.createObjectURL(files[i]),a=document.createElement('a');a.href=u;a.download=files[i].name;a.click();setTimeout(()=>URL.revokeObjectURL(u),3000)}$('shareAudio').onclick=()=>share(0);$('shareMeta').onclick=()=>share(1);$('saveAudio').onclick=()=>save(0);$('saveMeta').onclick=()=>save(1);
-</script></body></html>
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>歌唱実験・クリック校正</title>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            max-width: 680px;
+            margin: auto;
+            padding: 18px;
+            line-height: 1.6
+        }
+
+        label {
+            display: block;
+            margin: 12px 0
+        }
+
+        input,
+        button,
+        select {
+            font: inherit;
+            padding: 9px
+        }
+
+        button {
+            margin: 5px
+        }
+
+        #status {
+            background: #eef2f7;
+            padding: 10px;
+            border-radius: 8px
+        }
+
+        audio {
+            width: 100%
+        }
+
+        pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            background: #f6f6f6;
+            padding: 12px
+        }
+
+        small {
+            color: #555
+        }
+    </style>
+</head>
+
+<body>
+    <h2>クリック校正・歌唱録音</h2>
+    <p>クリック音はバッファ内の1、2、3、4秒に配置し、録音開始指示後に再生を予約します。録音ファイル内の時刻とAudioContext時刻は直接同一視できません。</p><label>参加者ID <input id="pid"
+            value="P01"></label><label>端末メモ <input id="device" placeholder="iPhone機種、iOS、イヤホン"></label><label>接続 <select
+            id="connection">
+            <option value="speaker">スピーカー（簡易校正）</option>
+            <option value="wired">有線イヤホン（歌唱）</option>
+        </select></label><label>モード <select id="mode">
+            <option value="click">クリック校正</option>
+            <option value="song">歌唱</option>
+        </select></label><label>テンポ <select id="tempo">
+            <option value="slow">遅い</option>
+            <option value="medium" selected>中間</option>
+            <option value="fast">速い</option>
+        </select></label><label>声量 <select id="loudness">
+            <option value="soft">小</option>
+            <option value="medium" selected>中</option>
+            <option value="strong">大</option>
+        </select></label>
+    <p>試行番号 <strong id="trial">1</strong></p><button id="start">録音＋再生開始</button><button id="stop" disabled>停止</button>
+    <p id="status">待機中</p><audio id="player" controls hidden></audio>
+    <p><button id="analyze" disabled>クリックを自動検出（試験用）</button><button id="shareAudio" disabled>音声を共有</button><button
+            id="shareMeta" disabled>JSONを共有</button><button id="saveAudio" disabled>音声を保存</button><button id="saveMeta"
+            disabled>JSONを保存</button></p>
+    <pre id="results">未測定</pre><small>自動検出は簡易アルゴリズムです。誤検出を波形で確認してください。スピーカー校正値を有線イヤホンの絶対遅延として流用しないでください。</small>
+    <section style="padding:12px;background:#eef5ff;border-radius:10px;margin:12px 0">
+        <h3>校正セッション（同じ端末で5回）</h3>
+        <p id="sessionStats">有効な校正: 0 / 5 回</p><button id="exportSession" disabled>校正集計JSONを共有</button><button
+            id="saveSession" disabled>校正集計JSONを保存</button><button
+            id="resetSession">校正結果をリセット</button><small>校正はスピーカーで行います。有線イヤホン使用時の絶対同期は検証できません。再読み込みすると集計は消えます。</small>
+    </section>
+    <script>
+        const $ = x => document.getElementById(x), paths = { slow: 'audio/slow.mp3', medium: 'audio/medium.mp3', fast: 'audio/fast.mp3' }; let ctx, stream, rec, source, chunks = [], blob, meta, files = [], trial = 1, stopping = false, objectUrl; let calibrations = [], sessionId = crypto.randomUUID(), sessionSummary = null; const mean = a => a.reduce((x, y) => x + y, 0) / a.length; function sd(a) { if (a.length < 2) return 0; let m = mean(a); return Math.sqrt(a.reduce((v, x) => v + (x - m) ** 2, 0) / (a.length - 1)) } function summary() { let v = calibrations.map(x => x.meanObservedMinusBufferMs); return { sessionId, createdAt: new Date().toISOString(), device: $('device').value, pid: $('pid').value, calibrationMode: 'speaker', sampleCount: v.length, meanObservedMinusBufferMs: v.length ? mean(v) : null, sdAcrossTrialsMs: v.length ? sd(v) : null, rangeAcrossTrialsMs: v.length ? Math.max(...v) - Math.min(...v) : null, individualTrials: calibrations, warning: 'Includes 500ms scheduling delay; not measured wired-earphone absolute latency. No automatic waveform shift.' } } function updateSession() { sessionSummary = summary(); let x = sessionSummary; $('sessionStats').textContent = `有効な校正: ${x.sampleCount} / 5 回 ｜ 平均 ${x.meanObservedMinusBufferMs?.toFixed(2) ?? '--'} ms ｜ SD ${x.sdAcrossTrialsMs?.toFixed(2) ?? '--'} ms ｜ 範囲 ${x.rangeAcrossTrialsMs?.toFixed(2) ?? '--'} ms`; $('exportSession').disabled = $('saveSession').disabled = !x.sampleCount; } function sessionFile() { return new File([JSON.stringify(summary(), null, 2)], `calibration_${sessionId.slice(0, 8)}.json`, { type: 'application/json' }) }
+        function state(s) { $('status').textContent = s } function busy(b) { for (const id of ['start', 'pid', 'device', 'connection', 'mode', 'tempo', 'loudness']) $(id).disabled = b; $('stop').disabled = !b }
+        function clickBuffer(context) { let sr = context.sampleRate, b = context.createBuffer(1, Math.ceil(sr * 5), sr), a = b.getChannelData(0); for (let k = 1; k <= 4; k++) { let base = Math.round(k * sr); for (let j = 0; j < Math.round(.012 * sr); j++)a[base + j] = Math.sin(2 * Math.PI * 1800 * j / sr) * Math.exp(-j / (sr * .002)) * .35 } return b }
+        async function clean() { try { source?.disconnect() } catch { } source = null; stream?.getTracks().forEach(t => t.stop()); stream = null; if (ctx && ctx.state !== 'closed') await ctx.close(); ctx = null; busy(false) }
+        function fileSet() { if (!blob || !meta) return; const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('webm') ? 'webm' : 'bin', base = `${meta.pid}_${meta.mode}_${meta.trial}_${meta.trialId.slice(0, 8)}`; files = [new File([blob], base + '.' + ext, { type: blob.type }), new File([JSON.stringify(meta, null, 2)], base + '.json', { type: 'application/json' })]; }
+        function render() { let x = meta?.analysis; $('results').textContent = JSON.stringify({ scheduledStartContextSeconds: meta?.scheduledStartContextSeconds, playbackDelaySeconds: meta?.playbackDelaySeconds, clickOffsetsInBufferSeconds: meta?.clickOffsetsInBufferSeconds, analysis: x ?? '録音後にクリックを自動検出できます' }, null, 2); }
+        $('start').onclick = async () => { busy(true); stopping = false; for (const id of ['analyze', 'shareAudio', 'shareMeta', 'saveAudio', 'saveMeta']) $(id).disabled = true; $('player').hidden = true; state('準備中'); try { let setting = { pid: $('pid').value.trim() || 'unknown', device: $('device').value.trim(), connection: $('connection').value, mode: $('mode').value, tempo: $('tempo').value, loudness: $('loudness').value, trial }; ctx = new AudioContext(); await ctx.resume(); let buffer; if (setting.mode === 'click') buffer = clickBuffer(ctx); else { let r = await fetch(paths[setting.tempo]); if (!r.ok) throw Error('伴奏が見つかりません'); buffer = await ctx.decodeAudioData(await r.arrayBuffer()) } stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); let mime = ['audio/mp4', 'audio/webm;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t)); rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); chunks = []; meta = { ...setting, calibrationSessionId: sessionId, calibrationSnapshot: summary(), trialId: crypto.randomUUID(), createdAt: new Date().toISOString(), trackSettings: stream.getAudioTracks()[0].getSettings(), audioContextSampleRate: ctx.sampleRate, playbackDelaySeconds: .5, clickOffsetsInBufferSeconds: setting.mode === 'click' ? [1, 2, 3, 4] : null, scheduledStartContextSeconds: null, recorderStartPerformanceMs: null, sourceStartCallPerformanceMs: null, recorderStopPerformanceMs: null, recordingDurationByPerformanceSeconds: null, warning: 'AudioContext時刻とMediaRecorderファイル先頭は未校正。スピーカーで測った残差は有線イヤホンの絶対遅延ではない。' }; rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }; rec.onstop = async () => { blob = new Blob(chunks, { type: rec.mimeType || 'application/octet-stream' }); meta.mimeType = blob.type; meta.sizeBytes = blob.size; if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = URL.createObjectURL(blob); $('player').src = objectUrl; $('player').hidden = false; fileSet(); for (const id of ['shareAudio', 'shareMeta', 'saveAudio', 'saveMeta']) $(id).disabled = false; $('analyze').disabled = meta.mode !== 'click'; trial++; $('trial').textContent = trial; render(); state('録音完了。必要ならクリックを検出し、音声とJSONを共有してください。'); await clean() }; rec.start(); meta.recorderStartPerformanceMs = performance.now(); source = ctx.createBufferSource(); source.buffer = buffer; source.connect(ctx.destination); meta.scheduledStartContextSeconds = ctx.currentTime + meta.playbackDelaySeconds; source.onended = () => { if (!stopping) finish() }; meta.sourceStartCallPerformanceMs = performance.now(); source.start(meta.scheduledStartContextSeconds); state('録音・再生中'); } catch (e) { state('エラー: ' + e.message); await clean() } };
+        function finish() { if (stopping) return; stopping = true; meta.recorderStopPerformanceMs = performance.now(); meta.recordingDurationByPerformanceSeconds = (meta.recorderStopPerformanceMs - meta.recorderStartPerformanceMs) / 1000; try { if (rec?.state !== 'inactive') rec.stop() } catch (e) { state('停止エラー: ' + e.message) } $('stop').disabled = true; state('録音を処理中') } $('stop').onclick = () => { try { source?.stop() } catch { } finish() };
+        // Encoded audio is decoded to PCM for offline onset detection. The first sample is not guaranteed to correspond to rec.start().
+        $('analyze').onclick = async () => { if (!blob || meta.mode !== 'click') return; state('クリックを解析中'); try { const c = new AudioContext(), decoded = await c.decodeAudioData(await blob.arrayBuffer()), sr = decoded.sampleRate, n = decoded.length; let mono = new Float32Array(n); for (let ch = 0; ch < decoded.numberOfChannels; ch++) { let d = decoded.getChannelData(ch); for (let i = 0; i < n; i++)mono[i] += d[i] / decoded.numberOfChannels } let frame = Math.max(1, Math.round(sr * .002)), rms = []; for (let i = 0; i < n; i += frame) { let sum = 0, end = Math.min(i + frame, n); for (let j = i; j < end; j++)sum += mono[j] * mono[j]; rms.push(Math.sqrt(sum / (end - i))) } let sorted = [...rms].sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)] || 0, peak = Math.max(...rms), threshold = Math.max(.006, median * 6, peak * .14), candidates = []; for (let i = 1; i < rms.length; i++)if (rms[i] >= threshold && rms[i - 1] < threshold) { let t = i * frame / sr; if (!candidates.length || t - candidates[candidates.length - 1] > .2) candidates.push(t) } let detected = candidates.slice(0, 4), intervals = detected.slice(1).map((t, i) => +(1000 * (t - detected[i] - 1)).toFixed(3)); meta.analysis = { method: '2ms RMS threshold, preliminary; manually verify', decodedSampleRate: sr, detectedClickSeconds: detected, detectedCount: detected.length, intervalErrorsMs: intervals, nominalBufferClickSeconds: [1, 2, 3, 4], observedMinusBufferTimeMs: detected.map((t, i) => +((t - (i + 1)) * 1000).toFixed(3)), note: 'observedMinusBufferTimeMs includes scheduled 500ms delay, clock-origin differences, and audio path effects; not absolute latency', threshold }; await c.close(); if (detected.length === 4 && intervals.every(x => Math.abs(x) <= 10)) { let offsets = meta.analysis.observedMinusBufferTimeMs; if (!calibrations.some(x => x.trialId === meta.trialId)) calibrations.push({ trialId: meta.trialId, recordedAt: meta.createdAt, meanObservedMinusBufferMs: mean(offsets), withinTrialRangeMs: Math.max(...offsets) - Math.min(...offsets), intervalErrorsMs: intervals, offsetsMs: offsets }); updateSession(); } fileSet(); render(); state(detected.length === 4 ? '解析完了。誤検出がないか確認してください。' : '検出数が4ではありません。波形を手動確認してください。') } catch (e) { state('解析エラー: ' + e.message) } };
+        async function share(i) { if (!files[i]) return; if (!navigator.share || !navigator.canShare?.({ files: [files[i]] })) { state('共有非対応。保存をお試しください'); return } try { await navigator.share({ files: [files[i]], title: '歌唱実験' }); state('共有操作が終了しました。受信先を確認してください') } catch (e) { state(e.name === 'AbortError' ? '共有をキャンセル' : '共有エラー: ' + e.message) } } function save(i) { if (!files[i]) return; let u = URL.createObjectURL(files[i]), a = document.createElement('a'); a.href = u; a.download = files[i].name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 3000) } $('exportSession').onclick = async () => { let f = sessionFile(); if (!navigator.canShare?.({ files: [f] }) || !navigator.share) { state('共有不可。集計JSONを保存してください'); return } try { await navigator.share({ files: [f], title: '校正セッション集計' }) } catch (e) { state('共有: ' + e.message) } }; $('saveSession').onclick = () => { let f = sessionFile(), u = URL.createObjectURL(f), a = document.createElement('a'); a.href = u; a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 3000) }; $('resetSession').onclick = () => { if (!confirm('校正結果を消去しますか？')) return; calibrations = []; sessionId = crypto.randomUUID(); updateSession() }; updateSession(); $('shareAudio').onclick = () => share(0); $('shareMeta').onclick = () => share(1); $('saveAudio').onclick = () => save(0); $('saveMeta').onclick = () => save(1);
+    </script>
+</body>
+
+</html>
