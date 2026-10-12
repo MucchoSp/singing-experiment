@@ -1,177 +1,54 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>歌唱実験・録音テスト</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 680px; margin: 0 auto; padding: 24px 16px; line-height: 1.6; color: #202124; }
-    h1 { font-size: 1.5rem; }
-    button { font: inherit; padding: 12px 16px; margin: 6px 6px 6px 0; border: 0; border-radius: 10px; background: #175cd3; color: white; }
-    button:disabled { opacity: .45; }
-    .panel { background: #f4f6f8; border-radius: 12px; padding: 16px; margin: 16px 0; }
-    #status { font-weight: 600; }
-    audio { display: block; width: 100%; margin-top: 12px; }
-    .note { font-size: .92rem; color: #555; }
-  </style>
-</head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>歌唱実験・伴奏同期テスト</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px;line-height:1.6;color:#202124}h1{font-size:1.45rem}label{display:block;font-weight:600;margin:12px 0 4px}select{font:inherit;width:100%;padding:10px;border:1px solid #aaa;border-radius:8px;background:white}button{font:inherit;padding:12px 16px;margin:6px 6px 6px 0;border:0;border-radius:10px;background:#175cd3;color:white}button:disabled{opacity:.45}.panel{background:#f4f6f8;border-radius:12px;padding:16px;margin:16px 0}#status{font-weight:600}audio{display:block;width:100%;margin-top:12px}.note{font-size:.92rem;color:#555}
+</style></head>
 <body>
-  <h1>歌唱実験・録音テスト</h1>
-  <p>このページは録音機能の動作確認用です。まだ音声はサーバーに送信されません。</p>
-
-  <div class="panel">
-    <p id="status">状態：録音開始を押してください。</p>
-    <button id="start">録音開始</button>
-    <button id="stop" disabled>録音停止</button>
-  </div>
-
-  <div class="panel">
-    <strong>録音結果</strong>
-    <p id="details">まだ録音されていません。</p>
-    <audio id="playback" controls hidden></audio>
-    <button id="download" disabled>テスト音声を保存</button>
-    <button id="share" disabled>LINE・Slackなどで送信</button>
-  </div>
-
-  <p class="note">注意：マイクを許可してから録音してください。共有端末では録音データを残さないでください。実験参加者の本番データにはまだ使用しないでください。</p>
-
+<h1>歌唱実験・伴奏同期テスト</h1>
+<p>試作版です。マイクで歌声を録音し、選んだテンポの伴奏を再生します。録音データはまだサーバーに送信されません。</p>
+<div class="panel">
+<label for="tempo">テンポ条件</label><select id="tempo"><option value="slow">遅いテンポ</option><option value="medium" selected>中間テンポ</option><option value="fast">速いテンポ</option></select>
+<label for="loudness">声量条件</label><select id="loudness"><option value="soft">小さめ</option><option value="medium" selected>普通</option><option value="strong">大きめ</option></select>
+<p class="note">声量条件は歌い手への指示として扱います。条件ごとの指示文は本番前に整えてください。</p>
+<p id="status">状態：条件を選び、「録音＋伴奏開始」を押してください。</p><button id="start">録音＋伴奏開始</button><button id="stop" disabled>停止</button>
+</div>
+<div class="panel"><strong>録音結果</strong><p id="details">まだ録音されていません。</p><audio id="playback" controls hidden></audio><button id="download" disabled>テスト音声を保存</button></div>
+<p class="note">事前準備：このHTMLと同じ場所に「audio」フォルダーを作り、その中に slow.mp3、medium.mp3、fast.mp3 を置いてください。伴奏はイヤホンで聴き、スピーカーから音が漏れないようにしてください。この試作はタイミング精度を保証しません。本番参加者の録音には、遅延検証と自動保存の実装後に使用してください。</p>
 <script>
 (() => {
-  const startButton = document.getElementById('start');
-  const stopButton = document.getElementById('stop');
-  const status = document.getElementById('status');
-  const details = document.getElementById('details');
-  const playback = document.getElementById('playback');
-  const downloadButton = document.getElementById('download');
-  const shareButton = document.getElementById('share');
-
-  let stream = null;
-  let recorder = null;
-  let chunks = [];
-  let recordingBlob = null;
-  let recordingUrl = null;
-  let startedAt = null;
-
-  function setStatus(message) {
-    status.textContent = '状態：' + message;
-  }
-
-  startButton.addEventListener('click', async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-      setStatus('このブラウザでは録音機能を利用できません。最新の Safari で開いてください。');
-      return;
-    }
-
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks = [];
-      const options = {};
-      if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        options.mimeType = 'audio/mp4';
-      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        options.mimeType = 'audio/webm;codecs=opus';
-      }
-      recorder = new MediaRecorder(stream, options);
-      recorder.addEventListener('dataavailable', event => {
-        if (event.data && event.data.size > 0) chunks.push(event.data);
-      });
-      recorder.addEventListener('stop', () => {
-        recordingBlob = new Blob(chunks, { type: recorder.mimeType || 'application/octet-stream' });
-        if (recordingUrl) URL.revokeObjectURL(recordingUrl);
-        recordingUrl = URL.createObjectURL(recordingBlob);
-        playback.src = recordingUrl;
-        playback.hidden = false;
-        details.textContent = `録音サイズ：約 ${(recordingBlob.size / 1024).toFixed(1)} KB。形式：${recordingBlob.type || '不明'}。`;
-        downloadButton.disabled = false;
-        shareButton.disabled = false;
-        setStatus('録音完了。下のプレーヤーで確認できます。');
-        stream?.getTracks().forEach(track => track.stop());
-        stream = null;
-      });
-
-      startedAt = performance.now();
-      recorder.start();
-      startButton.disabled = true;
-      stopButton.disabled = false;
-      downloadButton.disabled = true;
-      shareButton.disabled = true;
-      playback.hidden = true;
-      details.textContent = '録音中です。数秒話すか歌ってから「録音停止」を押してください。';
-      setStatus('録音中…');
-    } catch (error) {
-      setStatus('マイクを開始できませんでした。Safari のマイク許可設定を確認してください。');
-      console.error(error);
-      stream?.getTracks().forEach(track => track.stop());
-      stream = null;
-    }
+const $=id=>document.getElementById(id), tempo=$('tempo'), loudness=$('loudness'), start=$('start'), stop=$('stop'), status=$('status'), details=$('details'), playback=$('playback'), download=$('download');
+const paths={slow:'audio/slow.mp3',medium:'audio/medium.mp3',fast:'audio/fast.mp3'};
+let stream=null, recorder=null, chunks=[], blob=null, blobUrl=null, ctx=null, source=null, startedPerf=null, scheduledTime=null, condition=null, manualStop=false;
+const say=s=>status.textContent='状態：'+s;
+function mime(){if(MediaRecorder.isTypeSupported('audio/mp4'))return'audio/mp4';if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))return'audio/webm;codecs=opus';return'';}
+async function finish(message){if(recorder&&recorder.state!=='inactive')recorder.stop();if(source){try{source.stop()}catch(e){}source=null;}stop.disabled=true;start.disabled=false;say(message||'録音を終了しました。');}
+start.addEventListener('click',async()=>{
+ if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder||!window.AudioContext){say('このブラウザでは録音機能を利用できません。最新のSafariで開いてください。');return;}
+ start.disabled=true;say('マイクと伴奏を準備しています…');manualStop=false;
+ try{
+  condition={tempo:tempo.value,loudness:loudness.value};
+  stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  ctx=new AudioContext();await ctx.resume();
+  const response=await fetch(paths[condition.tempo],{cache:'no-store'});if(!response.ok)throw new Error('伴奏ファイルが見つかりません: '+paths[condition.tempo]);
+  const buffer=await ctx.decodeAudioData(await response.arrayBuffer());chunks=[];
+  const mt=mime();recorder=new MediaRecorder(stream,mt?{mimeType:mt}:{});
+  recorder.addEventListener('dataavailable',e=>{if(e.data&&e.data.size)chunks.push(e.data)});
+  recorder.addEventListener('stop',()=>{
+   blob=new Blob(chunks,{type:recorder.mimeType||'application/octet-stream'});if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(blob);playback.src=blobUrl;playback.hidden=false;download.disabled=false;
+   const elapsed=startedPerf===null?'不明':((performance.now()-startedPerf)/1000).toFixed(2);
+   details.textContent=`テンポ：${condition.tempo}、声量条件：${condition.loudness}、録音時間：約${elapsed}秒、形式：${blob.type||'不明'}、サイズ：約${(blob.size/1024).toFixed(1)}KB。`;
+   console.log('ローカル試験メタデータ（サーバーには送信されません）',{condition,elapsedSeconds:elapsed,mimeType:blob.type,bytes:blob.size,audioContextSampleRate:ctx?.sampleRate,scheduledPlaybackContextTime:scheduledTime,note:'実際の音響遅延の校正値ではありません'});
+   stream?.getTracks().forEach(t=>t.stop());stream=null;if(ctx&&ctx.state!=='closed')ctx.close();ctx=null;say('録音完了。下のプレーヤーで確認できます。');
   });
-
-  stopButton.addEventListener('click', () => {
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
-      const elapsed = ((performance.now() - startedAt) / 1000).toFixed(2);
-      details.textContent = `録音時間：約 ${elapsed} 秒。音声を処理しています…`;
-    }
-    startButton.disabled = false;
-    stopButton.disabled = true;
-  });
-
-  downloadButton.addEventListener('click', () => {
-    if (!recordingBlob || !recordingUrl) return;
-    const extension = recordingBlob.type.includes('mp4') ? 'm4a' :
-                      recordingBlob.type.includes('webm') ? 'webm' : 'audio';
-    const link = document.createElement('a');
-    link.href = recordingUrl;
-    link.download = `recording-test.${extension}`;
-    link.click();
-  });
-
-
-  // 録音ファイルをiPhoneの共有メニューに渡す
-  shareButton.addEventListener('click', async () => {
-    if (!recordingBlob) {
-      setStatus('共有する録音がありません。');
-      return;
-    }
-
-    if (!navigator.share || !navigator.canShare) {
-      setStatus('この環境ではファイル共有を利用できません。保存ボタンをお使いください。');
-      return;
-    }
-
-    const extension = recordingBlob.type.includes('mp4') ? 'm4a' :
-                      recordingBlob.type.includes('webm') ? 'webm' : 'audio';
-
-    const file = new File(
-      [recordingBlob],
-      `recording-test.${extension}`,
-      { type: recordingBlob.type || 'application/octet-stream' }
-    );
-
-    const shareData = {
-      title: '歌唱実験の録音',
-      text: '歌唱実験の録音ファイルです。',
-      files: [file]
-    };
-
-    if (!navigator.canShare({ files: [file] })) {
-      setStatus('この録音形式は共有できません。保存ボタンをお試しください。');
-      return;
-    }
-
-    try {
-      await navigator.share(shareData);
-      setStatus('共有操作が終了しました。研究者に届いたか確認してください。');
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        setStatus('共有をキャンセルしました。録音データは残っています。');
-      } else {
-        console.error(error);
-        setStatus('共有できませんでした。録音データは残っています。');
-      }
-    }
-  });
+  recorder.start(250);startedPerf=performance.now();source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);scheduledTime=ctx.currentTime+0.2;source.onended=()=>{if(!manualStop)finish('伴奏が終わりました。録音を処理しています…')};source.start(scheduledTime);
+  tempo.disabled=true;loudness.disabled=true;stop.disabled=false;playback.hidden=true;download.disabled=true;details.textContent='録音中です。伴奏に合わせて歌ってください。伴奏終了時に録音も自動停止します。';say('録音中・伴奏再生中…');
+ }catch(e){console.error(e);say('開始できませんでした。伴奏ファイルの名前・配置とマイク許可を確認してください。');stream?.getTracks().forEach(t=>t.stop());stream=null;if(ctx&&ctx.state!=='closed')await ctx.close();ctx=null;start.disabled=false;tempo.disabled=false;loudness.disabled=false;}
+});
+stop.addEventListener('click',()=>{manualStop=true;finish('手動で停止しました。録音を処理しています…')});
+const observer=new MutationObserver(()=>{const active=!stop.disabled;tempo.disabled=active;loudness.disabled=active});observer.observe(stop,{attributes:true,attributeFilter:['disabled']});
+download.addEventListener('click',()=>{if(!blob||!blobUrl)return;const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('webm')?'webm':'audio';const a=document.createElement('a');a.href=blobUrl;a.download=`singing-test-${condition?.tempo||'unknown'}-${condition?.loudness||'unknown'}.${ext}`;a.click()});
 })();
-</script>
-</body>
-</html>
+</script></body></html>
