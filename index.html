@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>歌唱実験・録音テスト</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 680px; margin: 0 auto; padding: 24px 16px; line-height: 1.6; color: #202124; }
+    h1 { font-size: 1.5rem; }
+    button { font: inherit; padding: 12px 16px; margin: 6px 6px 6px 0; border: 0; border-radius: 10px; background: #175cd3; color: white; }
+    button:disabled { opacity: .45; }
+    .panel { background: #f4f6f8; border-radius: 12px; padding: 16px; margin: 16px 0; }
+    #status { font-weight: 600; }
+    audio { display: block; width: 100%; margin-top: 12px; }
+    .note { font-size: .92rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>歌唱実験・録音テスト</h1>
+  <p>このページは録音機能の動作確認用です。まだ音声はサーバーに送信されません。</p>
+
+  <div class="panel">
+    <p id="status">状態：録音開始を押してください。</p>
+    <button id="start">録音開始</button>
+    <button id="stop" disabled>録音停止</button>
+  </div>
+
+  <div class="panel">
+    <strong>録音結果</strong>
+    <p id="details">まだ録音されていません。</p>
+    <audio id="playback" controls hidden></audio>
+    <button id="download" disabled>テスト音声を保存</button>
+  </div>
+
+  <p class="note">注意：マイクを許可してから録音してください。共有端末では録音データを残さないでください。実験参加者の本番データにはまだ使用しないでください。</p>
+
+<script>
+(() => {
+  const startButton = document.getElementById('start');
+  const stopButton = document.getElementById('stop');
+  const status = document.getElementById('status');
+  const details = document.getElementById('details');
+  const playback = document.getElementById('playback');
+  const downloadButton = document.getElementById('download');
+
+  let stream = null;
+  let recorder = null;
+  let chunks = [];
+  let recordingBlob = null;
+  let recordingUrl = null;
+  let startedAt = null;
+
+  function setStatus(message) {
+    status.textContent = '状態：' + message;
+  }
+
+  startButton.addEventListener('click', async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      setStatus('このブラウザでは録音機能を利用できません。最新の Safari で開いてください。');
+      return;
+    }
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      const options = {};
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        options.mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        options.mimeType = 'audio/webm;codecs=opus';
+      }
+      recorder = new MediaRecorder(stream, options);
+      recorder.addEventListener('dataavailable', event => {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
+      });
+      recorder.addEventListener('stop', () => {
+        recordingBlob = new Blob(chunks, { type: recorder.mimeType || 'application/octet-stream' });
+        if (recordingUrl) URL.revokeObjectURL(recordingUrl);
+        recordingUrl = URL.createObjectURL(recordingBlob);
+        playback.src = recordingUrl;
+        playback.hidden = false;
+        details.textContent = `録音サイズ：約 ${(recordingBlob.size / 1024).toFixed(1)} KB。形式：${recordingBlob.type || '不明'}。`;
+        downloadButton.disabled = false;
+        setStatus('録音完了。下のプレーヤーで確認できます。');
+        stream?.getTracks().forEach(track => track.stop());
+        stream = null;
+      });
+
+      startedAt = performance.now();
+      recorder.start();
+      startButton.disabled = true;
+      stopButton.disabled = false;
+      downloadButton.disabled = true;
+      playback.hidden = true;
+      details.textContent = '録音中です。数秒話すか歌ってから「録音停止」を押してください。';
+      setStatus('録音中…');
+    } catch (error) {
+      setStatus('マイクを開始できませんでした。Safari のマイク許可設定を確認してください。');
+      console.error(error);
+      stream?.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+  });
+
+  stopButton.addEventListener('click', () => {
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+      const elapsed = ((performance.now() - startedAt) / 1000).toFixed(2);
+      details.textContent = `録音時間：約 ${elapsed} 秒。音声を処理しています…`;
+    }
+    startButton.disabled = false;
+    stopButton.disabled = true;
+  });
+
+  downloadButton.addEventListener('click', () => {
+    if (!recordingBlob || !recordingUrl) return;
+    const extension = recordingBlob.type.includes('mp4') ? 'm4a' :
+                      recordingBlob.type.includes('webm') ? 'webm' : 'audio';
+    const link = document.createElement('a');
+    link.href = recordingUrl;
+    link.download = `recording-test.${extension}`;
+    link.click();
+  });
+})();
+</script>
+</body>
+</html>
