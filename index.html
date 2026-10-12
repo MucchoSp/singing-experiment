@@ -30,6 +30,7 @@
     <p id="details">まだ録音されていません。</p>
     <audio id="playback" controls hidden></audio>
     <button id="download" disabled>テスト音声を保存</button>
+    <button id="share" disabled>LINE・Slackなどで送信</button>
   </div>
 
   <p class="note">注意：マイクを許可してから録音してください。共有端末では録音データを残さないでください。実験参加者の本番データにはまだ使用しないでください。</p>
@@ -42,6 +43,7 @@
   const details = document.getElementById('details');
   const playback = document.getElementById('playback');
   const downloadButton = document.getElementById('download');
+  const shareButton = document.getElementById('share');
 
   let stream = null;
   let recorder = null;
@@ -81,6 +83,7 @@
         playback.hidden = false;
         details.textContent = `録音サイズ：約 ${(recordingBlob.size / 1024).toFixed(1)} KB。形式：${recordingBlob.type || '不明'}。`;
         downloadButton.disabled = false;
+        shareButton.disabled = false;
         setStatus('録音完了。下のプレーヤーで確認できます。');
         stream?.getTracks().forEach(track => track.stop());
         stream = null;
@@ -91,6 +94,7 @@
       startButton.disabled = true;
       stopButton.disabled = false;
       downloadButton.disabled = true;
+      shareButton.disabled = true;
       playback.hidden = true;
       details.textContent = '録音中です。数秒話すか歌ってから「録音停止」を押してください。';
       setStatus('録音中…');
@@ -120,6 +124,52 @@
     link.href = recordingUrl;
     link.download = `recording-test.${extension}`;
     link.click();
+  });
+
+
+  // 録音ファイルをiPhoneの共有メニューに渡す
+  shareButton.addEventListener('click', async () => {
+    if (!recordingBlob) {
+      setStatus('共有する録音がありません。');
+      return;
+    }
+
+    if (!navigator.share || !navigator.canShare) {
+      setStatus('この環境ではファイル共有を利用できません。保存ボタンをお使いください。');
+      return;
+    }
+
+    const extension = recordingBlob.type.includes('mp4') ? 'm4a' :
+                      recordingBlob.type.includes('webm') ? 'webm' : 'audio';
+
+    const file = new File(
+      [recordingBlob],
+      `recording-test.${extension}`,
+      { type: recordingBlob.type || 'application/octet-stream' }
+    );
+
+    const shareData = {
+      title: '歌唱実験の録音',
+      text: '歌唱実験の録音ファイルです。',
+      files: [file]
+    };
+
+    if (!navigator.canShare({ files: [file] })) {
+      setStatus('この録音形式は共有できません。保存ボタンをお試しください。');
+      return;
+    }
+
+    try {
+      await navigator.share(shareData);
+      setStatus('共有操作が終了しました。研究者に届いたか確認してください。');
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setStatus('共有をキャンセルしました。録音データは残っています。');
+      } else {
+        console.error(error);
+        setStatus('共有できませんでした。録音データは残っています。');
+      }
+    }
   });
 })();
 </script>
